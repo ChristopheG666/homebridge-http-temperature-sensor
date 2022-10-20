@@ -14,13 +14,14 @@ const utils = _http_base.utils;
 const packageJSON = require("./package.json");
 
 module.exports = function (homebridge) {
+    var FakeGatoHistoryService = require('fakegato-history')(homebridge);
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
 
     api = homebridge;
 
-    homebridge.registerAccessory("homebridge-http-temperature-sensor", "HTTP-TEMPERATURE", HTTP_TEMPERATURE);
-};
+    homebridge.registerAccessory("homebridge-http-temperature-sensor-withhistory", "HTTP-TEMPERATURE", HTTP_TEMPERATURE);
+
 
 const TemperatureUnit = Object.freeze({
    Celsius: "celsius",
@@ -31,6 +32,14 @@ function HTTP_TEMPERATURE(log, config) {
     this.log = log;
     this.name = config.name;
     this.debug = config.debug || false;
+    this.reference = config.reference || 20 ;
+    this.loggingService = new FakeGatoHistoryService("thermo", this, { storage: 'fs' });
+
+    this.factor = 1;
+    if (config.factor) {
+        this.factor = config.factor;
+        this.log.warn("Using factor %d", this.factor);
+        }
 
     if (config.getUrl) {
         try {
@@ -79,6 +88,7 @@ function HTTP_TEMPERATURE(log, config) {
 
     /** @namespace config.pullInterval */
     if (config.pullInterval) {
+        this.log.warn("Using pull interval %d", config.pullInterval);
         this.pullTimer = new PullTimer(log, config.pullInterval, this.getTemperature.bind(this), value => {
             this.homebridgeService.setCharacteristic(Characteristic.CurrentTemperature, value);
         });
@@ -124,12 +134,12 @@ HTTP_TEMPERATURE.prototype = {
         const informationService = new Service.AccessoryInformation();
 
         informationService
-            .setCharacteristic(Characteristic.Manufacturer, "Andreas Bauer")
-            .setCharacteristic(Characteristic.Model, "HTTP Temperature Sensor")
+            .setCharacteristic(Characteristic.Manufacturer, "Tof")
+            .setCharacteristic(Characteristic.Model, "HTTP Temperature Sensor with FakeGatoHistory")
             .setCharacteristic(Characteristic.SerialNumber, "TS01")
             .setCharacteristic(Characteristic.FirmwareRevision, packageJSON.version);
 
-        return [informationService, this.homebridgeService];
+        return [informationService, this.homebridgeService, this.loggingService];
     },
 
     handleNotification: function(body) {
@@ -173,7 +183,7 @@ HTTP_TEMPERATURE.prototype = {
             else {
                 let temperature;
                 try {
-                    temperature = utils.extractValueFromPattern(this.statusPattern, body, this.patternGroupToExtract);
+                    temperature = utils.extractValueFromPattern(this.statusPattern, body, this.patternGroupToExtract) * this.factor;
                 } catch (error) {
                     this.log("getTemperature() error occurred while extracting temperature from body: " + error.message);
                     callback(new Error("pattern error"));
@@ -185,6 +195,7 @@ HTTP_TEMPERATURE.prototype = {
 
                 if (this.debug)
                     this.log("Temperature is currently at %s", temperature);
+                this.loggingService.addEntry({time: Math.round(new Date().valueOf() / 1000), currentTemp: temperature, setTemp: this.reference, valvePosition: 100});
 
                 this.statusCache.queried();
                 callback(null, temperature);
@@ -192,4 +203,5 @@ HTTP_TEMPERATURE.prototype = {
         });
     },
 
+};
 };
