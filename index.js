@@ -88,8 +88,8 @@ function HTTP_TEMPERATURE(log, config) {
 
     /** @namespace config.pullInterval */
     if (config.pullInterval) {
-        this.log.warn("Using pull interval %d", config.pullInterval);
-        this.pullTimer = new PullTimer(log, config.pullInterval, this.getTemperature.bind(this), value => {
+        this.log.warn("Using pull interval %ds", config.pullInterval);
+        this.pullTimer = new PullTimer(log, config.pullInterval * 1000, this.getTemperature.bind(this), value => {
             this.homebridgeService.setCharacteristic(Characteristic.CurrentTemperature, value);
         });
         this.pullTimer.start();
